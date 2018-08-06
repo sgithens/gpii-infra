@@ -6,6 +6,7 @@ metadata:
     # annotation to the format that DNS plugin understands
     dns.alpha.kubernetes.io/external: "\
       preferences.<%= ENV["TF_VAR_cluster_name"] %>,\
-      flowmanager.<%= ENV["TF_VAR_cluster_name"] %>"
+      flowmanager.<%= ENV["TF_VAR_cluster_name"] %>,\
+      ppt.<%= ENV["TF_VAR_cluster_name"] %>"
   name: nginx-ingress-controller
   namespace: gpii
