@@ -67,7 +67,7 @@ class Vars
 
   def self.set_versions()
     versions = YAML.load(File.read(Vars::VERSIONS_FILE))
-    ['flowmanager', 'preferences', 'dataloader'].each do |component|
+    ['flowmanager', 'preferences', 'dataloader', 'devpmt'].each do |component|
       next unless versions["gpii-#{component}"]
       ENV["TF_VAR_#{component}_repository"] = versions["gpii-#{component}"].split('@')[0]
       ENV["TF_VAR_#{component}_checksum"] = versions["gpii-#{component}"].split('@')[1]

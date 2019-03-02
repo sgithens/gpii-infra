@@ -6,3 +6,5 @@ secretLists:
     namespace: gpii
   - name: flowmanager-tls
     namespace: gpii
+  - name: devpmt-tls
+    namespace: gpii
