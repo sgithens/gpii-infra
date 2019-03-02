@@ -8,8 +8,10 @@ svcListenPort: 80
 devpmtListenPort: 8081
 datasourceListenPort: 5984
 datasourceHostname: "http://admin:password@couchdb-svc-couchdb.gpii.svc.cluster.local"
+redisHostname: "redis-master.gpii.svc.cluster.local"
+redisPort: 6379
 
-nodeEnv: gpii.config.cloudBased.devpmt.production
+nodeEnv: gpii.config.devpmt.express.redisSessions
 preferencesUrl: http://preferences.gpii.svc.cluster.local
 enableStackdriverTrace: false
 
