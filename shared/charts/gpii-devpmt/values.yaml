@@ -1,0 +1,47 @@
+# Default values for gpii-devpmt.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+replicaCount: 1
+
+svcListenPort: 80
+devpmtListenPort: 8081
+datasourceListenPort: 5984
+datasourceHostname: "http://admin:password@couchdb-svc-couchdb.gpii.svc.cluster.local"
+
+nodeEnv: gpii.config.cloudBased.devpmt.production
+preferencesUrl: http://preferences.gpii.svc.cluster.local
+enableStackdriverTrace: false
+
+# sgithens TODO this should likely be sgithens/gpii-devpmt, also, what is the
+# relationship of this to whats in shared/versions.yml
+image:
+  repository: sgithens/gpii-devpmt
+  checksum: sha256:8c7703014abafb275d7f713066ca320bd6300b9c179a8eabed1a6bf7651040de
+  pullPolicy: IfNotPresent
+
+rollingUpdate:
+  maxSurge: 25%
+  maxUnavailable: 25%
+
+issuerRef:
+  name: letsencrypt-production
+  kind: Issuer
+
+dnsNames:
+- devpmt.test.local
+
+ingress:
+  disableSslRedirect: false
+
+nameOverride: devpmt
+
+## Optional resource requests and limits for deployment
+## ref: http://kubernetes.io/docs/user-guide/compute-resources/
+resources: {}
+  # requests:
+  #  cpu: 100m
+  #  memory: 128Mi
+  # limits:
+  #  cpu: 56
+  #  memory: 256Gi
