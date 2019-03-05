@@ -41,6 +41,10 @@ module "gke_cluster" {
     "https://www.googleapis.com/auth/trace.append",
   ]
 
+  # Istio config
+  istio_disabled = false
+  istio_auth     = "AUTH_MUTUAL_TLS"
+
   dashboard_disabled = true
 
   # empty password and username disables legacy basic authentication
@@ -68,9 +72,18 @@ resource "random_id" "cluster_protector" {
     # scratch or to change a parameter like 'oauth_scopes' that requires
     # cluster re-creation):
     #
+    # * cd gcp/live/ENV
+    # * rake sh"[sh -c \"cd /project/live/ENV/k8s/cluster && terragrunt state rm random_id.cluster_protector\"]"
+    # * Destroy or re-create the cluster (cluster_protector will be re-created)
+    # * See also: https://github.com/gpii-ops/gpii-infra/pull/199#issuecomment-463017515
+    #
+    # OR
+    #
     # * Change the value below to 'false'
-    # * Destroy the cluster
+    # * Apply the change (to delete the cluster_protector resource)
+    # * Destroy or re-create the cluster
     # * Change the value below back to 'true'
+    # * Apply the change (to re-create the cluster_protector resource)
     prevent_destroy = true
   }
 }

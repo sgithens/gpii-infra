@@ -7,8 +7,10 @@ stages:
   - promote-common-to-prd
   - common-prd
   - dev
+  - plan-all-stg
   - promote-to-stg
   - stg
+  - plan-all-prd
   - promote-to-prd
   - prd
 
@@ -55,7 +57,7 @@ gcp-setup:
   script:
     - docker version
     - docker-compose version
-    - docker pull gpii/exekube:0.4.0-google
+    - pushd gcp/live/dev/ && rake update_exekube && popd
     - docker images | grep exekube
     - ruby --version
     - bundle version
@@ -130,18 +132,20 @@ common-stg-test-gcp-dev:
     - cd gcp/live/dev
     - rake clobber
     - rake configure_serviceaccount_ci_restore
-    - rake
-    - rake test_preferences
-    - rake test_flowmanager
-  after_script:
-    # Clean up dev environment even if one of the previous steps fails
-    - cd gcp/live/dev
     # We need to chain the following into a single command to prevent various issues
     # caused by subsequent after script commands when destroy task fails.
     # More info: https://issues.gpii.net/browse/GPII-3488
     - (rake destroy && rake destroy_secrets && rake destroy_tfstate[k8s]) || true
     # Terraform state encryption key is also gone with secrets, we have to destroy tfstate as well
     - rake destroy_tfstate[locust] || true
+    - rake || (rake display_cluster_state ; false)
+    - rake test_preferences || (rake display_cluster_state ; false)
+    - rake test_flowmanager || (rake display_cluster_state ; false)
+    - rake display_cluster_state
+    - (rake destroy && rake destroy_secrets && rake destroy_tfstate[k8s]) || true
+    - rake destroy_tfstate[locust] || true
+  after_script:
+    - cd gcp/live/dev
     # Remove all SA keys except current one to prevent hitting 10 keys per SA limit (GPII-3299)
     - rake destroy_sa_keys || true
     - rake clobber || true
@@ -215,21 +219,42 @@ gcp-dev:
     - cd gcp/live/dev
     - rake clobber
     - rake configure_serviceaccount_ci_restore
-    - rake
-    - rake test_preferences
-    - rake test_flowmanager
-  after_script:
-    # Clean up even if something failed.
-    - cd gcp/live/dev
     # We need to chain the following into a single command to prevent various issues
     # caused by subsequent after script commands when destroy task fails.
     # More info: https://issues.gpii.net/browse/GPII-3488
     - (rake destroy && rake destroy_secrets && rake destroy_tfstate[k8s]) || true
     # Terraform state encryption key is also gone with secrets, we have to destroy tfstate as well
     - rake destroy_tfstate[locust] || true
+    - rake || (rake display_cluster_state ; false)
+    - rake test_preferences || (rake display_cluster_state ; false)
+    - rake test_flowmanager || (rake display_cluster_state ; false)
+    - rake display_cluster_state
+    - (rake destroy && rake destroy_secrets && rake destroy_tfstate[k8s]) || true
+    - rake destroy_tfstate[locust] || true
+  after_script:
+    - cd gcp/live/dev
     # Remove all SA keys except current one to prevent hitting 10 keys per SA limit (GPII-3299)
     - rake destroy_sa_keys || true
     - rake clobber || true
+  only:
+    - master@gpii-ops/gpii-infra
+
+gcp-plan-all-stg:
+  stage: plan-all-stg
+  tags:
+    - gcp
+  environment:
+    name: stg
+  script:
+    - cd gcp/live/stg
+    - rake clobber
+    - rake configure_serviceaccount_ci_restore
+    # Next step is required to restore local tiller certs and prevent
+    # terraform from failing during helm_release.release status checks
+    - rake fetch_helm_certs
+    # Infra requires special treatment because of secrets configuration
+    - rake plain_sh['rake plan_infra'] || true
+    - rake sh['xk plan-all live/stg/k8s 2> /dev/null'] || true
   only:
     - master@gpii-ops/gpii-infra
 
@@ -295,6 +320,7 @@ gcp-stg:
   after_script:
     # Clean up even if something failed.
     - cd gcp/live/stg
+    - rake display_cluster_state
     # Destroy Locust module (used for smoke tests) and its TF state
     - rake destroy_module[locust] || true
     - rake destroy_tfstate[locust] || true
@@ -319,6 +345,28 @@ aws-promote-to-prd:
   allow_failure: false
   only:
     - master@gpii-ops/gpii-infra
+
+gcp-plan-all-prd:
+  stage: plan-all-prd
+  variables:
+    RAKE_REALLY_RUN_IN_PRD: "true"
+  tags:
+    - gcp
+  environment:
+    name: prd
+  script:
+    - cd gcp/live/prd
+    - rake clobber
+    - rake configure_serviceaccount_ci_restore
+    # Next step is required to restore local tiller certs and prevent
+    # terraform from failing during helm_release.release status checks
+    - rake fetch_helm_certs
+    # Infra requires special treatment because of secrets configuration
+    - rake plain_sh['rake plan_infra'] || true
+    - rake sh['xk plan-all live/prd/k8s 2> /dev/null'] || true
+  only:
+    - master@gpii-ops/gpii-infra
+
 
 gcp-promote-to-prd:
   stage: promote-to-prd
@@ -373,6 +421,7 @@ gcp-prd:
   after_script:
     # Clean up even if something failed.
     - cd gcp/live/prd
+    - rake display_cluster_state
     # Destroy Locust module (used for smoke tests) and its TF state
     - rake destroy_module[locust] RAKE_REALLY_DESTROY_IN_PRD=true || true
     - rake destroy_tfstate[locust] RAKE_REALLY_DESTROY_IN_PRD=true || true

@@ -23,7 +23,7 @@ resource "null_resource" "locust_swarm_session" {
         exit 1
       fi
 
-      RETRIES=10
+      RETRIES=20
       RETRY_COUNT=1
       WORKERS_READY=0
       while [ "$WORKERS_READY" -lt "${var.locust_workers}" ]; do
@@ -93,7 +93,7 @@ resource "null_resource" "locust_swarm_session" {
         echo "[Try $RETRY_COUNT of $RETRIES] Posting Locust results for \"${var.locust_target_app}\" to Stackdriver..."
         ruby -e '
           require "${path.module}/client.rb"
-          process_locust_result("${path.cwd}/${var.locust_target_app}.stats", "${path.cwd}/${var.locust_target_app}.distribution", "${var.locust_target_app}")
+          LocustClient.process_locust_result("${path.cwd}/${var.locust_target_app}.stats", "${path.cwd}/${var.locust_target_app}.distribution", "${var.locust_target_app}", "${var.locust_users}")
         '
         EXIT_STATUS="$?"
 

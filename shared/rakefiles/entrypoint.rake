@@ -79,7 +79,7 @@ task :deploy => [:set_vars, :apply_infra] do
 end
 
 desc "Display some handy info about the cluster"
-task :display_cluster_info do
+task :display_cluster_info => [:set_vars] do
   puts
   puts
   puts "*************************************************"
@@ -90,7 +90,7 @@ task :display_cluster_info do
   puts "  https://console.cloud.google.com/home/dashboard?organizationId=#{ ENV["TF_VAR_organization_id"] }&project=#{ ENV["TF_VAR_project_id"] }"
   puts
   puts "Stackdriver Logging Dashboard:"
-  puts "  https://console.cloud.google.com/logs/viewer?project=#{ ENV["TF_VAR_project_id"] }&organizationId=#{ ENV["TF_VAR_organization_id"] }"
+  puts "  https://console.cloud.google.com/logs/viewer?project=#{ ENV["TF_VAR_project_id"] }&organizationId=#{ ENV["TF_VAR_organization_id"] }&advancedFilter=search%20text"
   puts
   puts "Stackdriver Monitoring Dashboard:"
   puts "  https://app.google.stackdriver.com/?project=#{ ENV["TF_VAR_project_id"] }"
@@ -108,6 +108,11 @@ task :display_cluster_info do
   puts
 end
 
+desc "Display debugging info about the current state of the cluster"
+task :display_cluster_state => [:set_vars] do
+  sh "#{@exekube_cmd} rake display_cluster_state"
+end
+
 task :check_destroy_allowed do
   if ["prd"].include?(@env)
     if ENV["RAKE_REALLY_DESTROY_IN_PRD"].nil?
@@ -117,8 +122,8 @@ task :check_destroy_allowed do
   end
 end
 
-desc "Undeploy GPII compoments and destroy cluster"
-task :destroy => [:set_vars, :check_destroy_allowed] do
+desc "Undeploy GPII components and destroy cluster"
+task :destroy => [:set_vars, :check_destroy_allowed, :fetch_helm_certs] do
   sh "#{@exekube_cmd} rake xk[down]"
 end
 
@@ -209,6 +214,11 @@ task :rotate_secrets_key, [:kms_key] => [:set_vars, :check_destroy_allowed] do |
   sh "#{@exekube_cmd} rake rotate_secrets_key['#{kms_key}']"
 end
 
+desc "[ADVANCED] Fetch helm TLS certificates from TF state (only in case they are present)"
+task :fetch_helm_certs => [:set_vars] do
+  sh "#{@exekube_cmd} rake fetch_helm_certs"
+end
+
 desc "[ADVANCED] Destroy provided module in the cluster, and then deploy it -- rake redeploy_module['k8s/kube-system/cert-manager']"
 task :redeploy_module, [:module] => [:set_vars] do |taskname, args|
   Rake::Task[:destroy_module].invoke(args[:module])
@@ -216,7 +226,7 @@ task :redeploy_module, [:module] => [:set_vars] do |taskname, args|
 end
 
 desc "[ADVANCED] Deploy provided module into the cluster -- rake deploy_module['k8s/kube-system/cert-manager']"
-task :deploy_module, [:module] => [:set_vars] do |taskname, args|
+task :deploy_module, [:module] => [:set_vars, :fetch_helm_certs] do |taskname, args|
   if args[:module].nil?
     puts "  ERROR: args[:module] must be set and point to Terragrunt directory!"
     raise
@@ -228,7 +238,7 @@ task :deploy_module, [:module] => [:set_vars] do |taskname, args|
 end
 
 desc "[ADVANCED] Destroy provided module in the cluster -- rake destroy_module['k8s/kube-system/cert-manager']"
-task :destroy_module, [:module] => [:set_vars, :check_destroy_allowed] do |taskname, args|
+task :destroy_module, [:module] => [:set_vars, :check_destroy_allowed, :fetch_helm_certs] do |taskname, args|
   if args[:module].nil?
     puts "  ERROR: args[:module] must be set and point to Terragrunt directory!"
     raise
