@@ -4,4 +4,4 @@
 gpii-dataloader: "gpii/universal@sha256:96db9d6ad43c90179c90969b1385212f328b336a27a0e6ad208f45c6d1db715c"
 gpii-flowmanager: "gpii/universal@sha256:96db9d6ad43c90179c90969b1385212f328b336a27a0e6ad208f45c6d1db715c"
 gpii-preferences: "sgithens/universal@sha256:077ac2b0f18f34d864d9a94144fadd64ca831b813c0ddeddf13a54e430898481"
-gpii-devpmt: "sgithens/gpii-devpmt@sha256:c38ef96cf81976c9f4e51da0fb8ec1ead96d9cb533eadf8e3bdd403c48196623"
+gpii-devpmt: "sgithens/gpii-devpmt@sha256:a83271e3470775c15a8f42ec2025b02dfeb63d9e64b7214f5d2cc726e549cc57"
