@@ -2,20 +2,75 @@ terraform {
   backend "gcs" {}
 }
 
+provider "google" {
+  project     = "${var.project_id}"
+  credentials = "${var.serviceaccount_key}"
+}
+
+provider "google-beta" {
+  project     = "${var.project_id}"
+  credentials = "${var.serviceaccount_key}"
+}
+
 variable "project_id" {}
 variable "serviceaccount_key" {}
+variable "env" {}
 
 # Terragrunt variables
 variable "node_type" {}
 
-variable "infra_region" {}
-
-variable "initial_node_count" {
+variable "node_count" {
   default = 1
 }
 
+variable "expected_gke_version_prefix" {
+  default = "1.12"
+}
+
+variable "infra_region" {}
+
 variable "prevent_destroy_cluster" {
   default = false
+}
+
+variable "binary_authorization_evaluation_mode" {
+  default = "ALWAYS_ALLOW"
+}
+
+variable "binary_authorization_enforcement_mode" {
+  default = "ENFORCED_BLOCK_AND_AUDIT_LOG"
+}
+
+variable "binary_authorization_admission_whitelist_patterns" {
+  # Allow images from our GCR.
+  default = ["gcr.io/gpii-common-prd/*"]
+}
+
+data "google_service_account" "gke_cluster_node" {
+  account_id = "gke-cluster-node"
+  project    = "${var.project_id}"
+}
+
+data "google_container_engine_versions" "this" {
+  provider = "google-beta"
+  project  = "${var.project_id}"
+  region   = "${var.infra_region}"
+}
+
+data "external" "gke_version_assert" {
+  program = [
+    "bash",
+    "-c",
+    <<EOF
+      if [[ '${data.google_container_engine_versions.this.default_cluster_version}' == ${var.expected_gke_version_prefix}* ]]; then
+        echo '{"version": "${data.google_container_engine_versions.this.default_cluster_version}"}'
+      else
+        echo 'Default GKE version is ${data.google_container_engine_versions.this.default_cluster_version}, this would mean minor version upgrade!' >&2
+        false
+      fi
+EOF
+    ,
+  ]
 }
 
 module "gke_cluster" {
@@ -23,29 +78,19 @@ module "gke_cluster" {
   project_id         = "${var.project_id}"
   serviceaccount_key = "${var.serviceaccount_key}"
 
-  initial_node_count = "${var.initial_node_count}"
-  node_type          = "${var.node_type}"
-
-  kubernetes_version = "1.11.6-gke.3"
+  kubernetes_version = "${data.external.gke_version_assert.result.version}"
 
   region = "${var.infra_region}"
 
   monitoring_service = "monitoring.googleapis.com/kubernetes"
   logging_service    = "logging.googleapis.com/kubernetes"
 
-  oauth_scopes = [
-    "https://www.googleapis.com/auth/compute",
-    "https://www.googleapis.com/auth/devstorage.read_only",
-    "https://www.googleapis.com/auth/logging.write",
-    "https://www.googleapis.com/auth/monitoring",
-    "https://www.googleapis.com/auth/trace.append",
-  ]
-
   # Istio config
   istio_disabled = false
   istio_auth     = "AUTH_MUTUAL_TLS"
 
-  dashboard_disabled = true
+  dashboard_disabled           = true
+  http_load_balancing_disabled = true
 
   # empty password and username disables legacy basic authentication
   master_auth_username = ""
@@ -54,6 +99,18 @@ module "gke_cluster" {
   issue_client_certificate = false
 
   update_timeout = "30m"
+
+  primary_pool_min_node_count     = "${var.node_count}"
+  primary_pool_max_node_count     = "${var.node_count}"
+  primary_pool_initial_node_count = "${var.node_count}"
+  primary_pool_machine_type       = "${var.node_type}"
+  primary_pool_oauth_scopes       = ["cloud-platform"]
+  primary_pool_service_account    = "${data.google_service_account.gke_cluster_node.email}"
+
+  enable_binary_authorization                       = "true"
+  binary_authorization_evaluation_mode              = "${var.binary_authorization_evaluation_mode}"
+  binary_authorization_enforcement_mode             = "${var.binary_authorization_enforcement_mode}"
+  binary_authorization_admission_whitelist_patterns = "${var.binary_authorization_admission_whitelist_patterns}"
 }
 
 # Workaround from

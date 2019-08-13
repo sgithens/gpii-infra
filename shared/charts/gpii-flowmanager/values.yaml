@@ -11,6 +11,7 @@ datasourceHostname: "http://admin:password@couchdb-svc-couchdb.gpii.svc.cluster.
 
 nodeEnv: gpii.config.cloudBased.flowManager.production
 preferencesUrl: http://preferences.gpii.svc.cluster.local
+
 enableStackdriverTrace: false
 
 image:
@@ -22,9 +23,10 @@ rollingUpdate:
   maxSurge: 25%
   maxUnavailable: 25%
 
-issuerRef:
-  name: letsencrypt-production
-  kind: Issuer
+acme:
+  server: https://acme-staging-v02.api.letsencrypt.org/directory
+  email: dev-null@raisingthefloor.org
+  clouddnsProject:
 
 dnsNames:
 - flowmanager.test.local

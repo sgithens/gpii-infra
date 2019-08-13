@@ -5,10 +5,6 @@ task :set_vars_ci => [:set_vars] do
     " run ",
     " run --volume #{@secrets_backup_volume}:/secrets-backup ",
   )
-  @exekube_cmd_with_aws_volume = @exekube_cmd.sub(
-    " run ",
-    " run --volume #{ENV["HOME"]}/.aws:/aws-backup ",
-  )
   # This duplicates information from xk_config.rake,
   # see corresponding :configure_serviceaccount task for more info.
   @serviceaccount_key_file = "/project/live/#{@env}/secrets/kube-system/owner.json"
@@ -34,19 +30,8 @@ task :configure_serviceaccount_ci_restore => [:set_vars_ci] do
   # service account key file.
   sh "#{@exekube_cmd_with_backups} sh -c '\
     mkdir -p $(dirname #{@serviceaccount_key_file}) && \
-    cp -av #{@serviceaccount_key_file_in_backups} #{@serviceaccount_key_file} \
-  '"
-  sh "#{@exekube_cmd} sh -c '\
-    gcloud auth activate-service-account \
-      --key-file #{@serviceaccount_key_file} \
-      --project $TF_VAR_project_id \
-  '"
-end
-
-task :configure_aws_restore => [:set_vars_ci] do
-  # Puts the AWS credentials a Docker volume to be consumed by the apps inside the container
-  sh "#{@exekube_cmd_with_aws_volume} sh -c '\
-    cp -av /aws-backup/* /root/.aws/ \
+    cp -av #{@serviceaccount_key_file_in_backups} #{@serviceaccount_key_file} && \
+    rake activate_serviceaccount
   '"
 end
 
@@ -61,6 +46,28 @@ end
 desc "[CI ONLY] Clobber local backup on CI worker"
 task :configure_serviceaccount_ci_clobber => [:set_vars_ci]  do
   sh "docker volume rm -f -- #{@secrets_backup_volume}"
+end
+
+desc "[CI ONLY] Run all CI environment destroy and setup steps for ephemeral clusters"
+task :destroy_hard_and_deploy_ci => [:set_vars_ci] do
+  Rake::Task["destroy_hard"].invoke
+  begin
+    Rake::Task["deploy"].invoke
+    Rake::Task["test_preferences"].invoke
+    Rake::Task["test_flowmanager"].invoke
+    Rake::Task["display_cluster_state"].invoke
+    Rake::Task["destroy_hard"].reenable
+    Rake::Task["destroy_hard"].invoke
+  rescue RuntimeError => err
+    puts "Deploy step failed:"
+    puts err
+    Rake::Task["display_cluster_state"].invoke
+    fail
+  end
+  # If everything succeeded, clean up again. (If something failed, don't clean
+  # it up; instead, leave it around for further debugging.)
+  Rake::Task["destroy_hard"].reenable
+  Rake::Task["destroy_hard"].invoke
 end
 
 # vim: et ts=2 sw=2:

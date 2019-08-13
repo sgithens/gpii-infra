@@ -1,0 +1,20 @@
+# Default values for backup-exporter
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+image:
+  repository: "${cloud_sdk_repository}"
+  tag: "${cloud_sdk_tag}"
+  pullPolicy: IfNotPresent
+
+replicaCount: ${replica_count}
+
+serviceAccountName: "${service_account_name}"
+
+destinationBucket: "${destination_bucket}"
+
+localIntermediateBucket: "${local_intermediate_bucket}"
+
+schedule: "${schedule}"
+
+logBucket: "${log_bucket}"

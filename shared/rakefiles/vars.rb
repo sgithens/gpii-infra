@@ -19,11 +19,15 @@ class Vars
 
     ENV["TF_VAR_organization_domain"] = "gpii.net" if ENV["TF_VAR_organization_domain"].nil?
 
+    ENV["TF_VAR_common_project_id"] = "gpii-common-prd" if ENV["TF_VAR_common_project_id"].nil?
+
     ENV["ORGANIZATION_ID"] = "247149361674" if ENV["ORGANIZATION_ID"].nil? # RtF Organization
     ENV["TF_VAR_organization_id"] = ENV["ORGANIZATION_ID"]
 
     ENV["BILLING_ID"] = "01A0E1-B0B31F-349F4F" if ENV["BILLING_ID"].nil? # RtF Billing Account
     ENV["TF_VAR_billing_id"] = ENV["BILLING_ID"]
+
+    ENV["BILLING_ORGANIZATION_ID"] = "247149361674" if ENV["BILLING_ORGANIZATION_ID"].nil? # RtF Organization that owns Billing Account
 
     ENV["TF_VAR_infra_region"] = "us-central1" if ENV["TF_VAR_infra_region"].nil? # GCP region to deploy cluster and other resources
 
@@ -47,6 +51,13 @@ class Vars
     # Hack to force Terraform to reapply some resources on every run
     ENV["TF_VAR_nonce"] = SecureRandom.hex
 
+    # Set HELM TLS variables
+    ENV["HELM_TLS_CERT"]    = "/project/live/#{env}/secrets/kube-system/helm-tls/helm.cert.pem"
+    ENV["HELM_TLS_KEY"]     = "/project/live/#{env}/secrets/kube-system/helm-tls/helm.key.pem"
+    ENV["HELM_TLS_CA_CERT"] = "/project/live/#{env}/secrets/kube-system/helm-tls/ca.cert.pem"
+    ENV["HELM_TLS_ENABLE"]  = "true"
+    ENV["HELM_TLS_VERIFY"]  = "true"
+
     if ENV["TF_VAR_project_id"].nil?
       if ["dev"].include?(env)
         ENV["TF_VAR_project_id"] = "#{ENV["TF_VAR_organization_name"]}-#{project_type}-#{env}-#{ENV["USER"]}"
@@ -67,10 +78,18 @@ class Vars
 
   def self.set_versions()
     versions = YAML.load(File.read(Vars::VERSIONS_FILE))
-    ['flowmanager', 'preferences', 'dataloader', 'devpmt'].each do |component|
-      next unless versions["gpii-#{component}"]
-      ENV["TF_VAR_#{component}_repository"] = versions["gpii-#{component}"].split('@')[0]
-      ENV["TF_VAR_#{component}_checksum"] = versions["gpii-#{component}"].split('@')[1]
+    versions.each do |component, values|
+      next unless (values["generated"] and
+                   values["generated"]["repository"] and
+                   values["generated"]["sha"] and
+                   values["generated"]["tag"])
+      ENV["TF_VAR_#{component}_repository"] = values["generated"]["repository"]
+      ENV["TF_VAR_#{component}_checksum"] = values["generated"]["sha"]
+      # Usually, the yaml library can deduce that a tag is a string. However, if
+      # the tag is a valid float it is imported as such. Then,
+      # ENV[component_tag]= raises "TypeError: no implicit conversion of Float
+      # into String".
+      ENV["TF_VAR_#{component}_tag"] = values["generated"]["tag"].to_s
     end
   end
 end

@@ -1,0 +1,34 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: {{ template "backup-exporter.name" . }}
+  namespace: backup-exporter
+  labels:
+    app: {{ template "backup-exporter.name" . }}
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+data:
+  backup.sh: |
+    set -e
+    DESTINATION_BUCKET={{ .Values.destinationBucket }}
+    INTERMEDIATE_BUCKET={{ .Values.localIntermediateBucket }}
+    LOG_BUCKET={{ .Values.logBucket }}
+
+    gsutil -q ls "gs://${DESTINATION_BUCKET}/" 2>&1 >/dev/null || { echo "Destination bucket is not accessible"; exit 1; }
+    gsutil -q ls "gs://${INTERMEDIATE_BUCKET}/" 2>&1 >/dev/null || { echo "Intermediate bucket is not accessible"; exit 1; }
+    gsutil -q ls "gs://${LOG_BUCKET}/" 2>&1 >/dev/null || { echo "Log bucket is not accessible"; exit 1; }
+
+    gcloud config set account {{ .Values.serviceAccountName }}
+    SNAPSHOTS=$(for i in `seq 0 $(({{ .Values.replicaCount }}-1))`; do gcloud compute snapshots list --sort-by=~creationTimestamp,STATUS --limit=1 --format="value[separator=';'](name,status)" --filter="name~'pv-database-storage-couchdb-couchdb-$i-*'" | cut -f1 -d\; ; done)
+    TIMESTAMP=$(date +%F_%H%M%S%Z)
+    for snapshot in ${SNAPSHOTS}; do
+      IMAGE_FOUND=$(gcloud compute images list --format="value[separator=';'](name)" --filter=name=image-disk-${snapshot})
+      if [ "${IMAGE_FOUND}" == "image-disk-${snapshot}" ]; then
+        gcloud -q compute images delete "image-disk-${snapshot}"
+      fi
+      gcloud -q compute images create "image-disk-${snapshot}" --source-snapshot "${snapshot}"
+      gcloud -q compute images export --log-location "gs://${LOG_BUCKET}/logs" --destination-uri "gs://${INTERMEDIATE_BUCKET}/${TIMESTAMP}-${snapshot}.tar.gz" --image "image-disk-${snapshot}" --network "network" --subnet "nodes" --zone "us-central1-a"
+      gcloud -q compute images delete "image-disk-${snapshot}"
+      gsutil -q mv "gs://${INTERMEDIATE_BUCKET}/${TIMESTAMP}-${snapshot}.tar.gz" "gs://${DESTINATION_BUCKET}/${TIMESTAMP}-${snapshot}.tar.gz"
+    done

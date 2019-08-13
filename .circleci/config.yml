@@ -1,8 +1,12 @@
+# https://circleci.com/blog/circleci-hacks-reuse-yaml-in-your-circleci-config-with-yaml/
+default_docker: &default_docker
+  docker:
+  - image: gpii/exekube:0.9.4-google_gpii.0
+
 version: 2
 jobs:
   terraform-fmt-check:
-    docker:
-      - image: gpii/exekube:0.4.0-google
+    <<: *default_docker
     working_directory: /workspace
     steps:
       - checkout
@@ -13,8 +17,7 @@ jobs:
             terraform fmt --check=true /workspace
 
   gcp-unit-tests:
-    docker:
-      - image: gpii/exekube:0.4.0-google
+    <<: *default_docker
     working_directory: /workspace
     steps:
       - checkout
@@ -24,22 +27,7 @@ jobs:
           command: |
             echo "Running GCP unit tests...";
             cd /workspace/shared/rakefiles/tests;
-            gem install bundler --no-ri --no-rdoc -v 1.17.3;
-            bundle install;
-            rake
-
-  aws-unit-tests:
-    docker:
-      - image: gpii/exekube:0.4.0-google
-    working_directory: /workspace
-    steps:
-      - checkout
-      - run:
-          name: AWS Unit Tests
-          command: |
-            echo "Running AWS unit tests...";
-            cd /workspace/aws/rakefiles/tests;
-            gem install test-unit --no-ri --no-rdoc;
+            bundle install --with test;
             rake
 
 workflows:
@@ -48,4 +36,3 @@ workflows:
     jobs:
       - terraform-fmt-check
       - gcp-unit-tests
-      - aws-unit-tests

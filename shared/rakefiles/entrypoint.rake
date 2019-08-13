@@ -20,11 +20,6 @@ end
 
 @exekube_cmd = "docker-compose run --rm xk"
 
-desc "Pull the current exekube container from the Docker hub"
-task :update_exekube => :set_vars do
-  sh "docker-compose pull"
-end
-
 task :clean_volumes => :set_vars do
   ["helm", "kube", "locust_tasks"].each do |app|
     sh "docker volume rm -f -- #{ENV["TF_VAR_project_id"]}-#{ENV["USER"]}-#{app}"
@@ -74,7 +69,7 @@ end
 
 desc "Create cluster and deploy GPII components to it"
 task :deploy => [:set_vars, :apply_infra] do
-  sh "#{@exekube_cmd} rake xk[up]"
+  sh "#{@exekube_cmd} rake xk[up,false,false,true]"
   Rake::Task["display_cluster_info"].invoke
 end
 
@@ -95,9 +90,6 @@ task :display_cluster_info => [:set_vars] do
   puts "Stackdriver Monitoring Dashboard:"
   puts "  https://app.google.stackdriver.com/?project=#{ ENV["TF_VAR_project_id"] }"
   puts
-  puts "Preferences endpoint:"
-  puts "  curl -k https://preferences.#{ENV["TF_VAR_domain_name"] }/preferences/carla"
-  puts
   puts "Flowmanager endpoint:"
   puts "  curl -k https://flowmanager.#{ENV["TF_VAR_domain_name"] }"
   puts
@@ -113,6 +105,11 @@ task :display_cluster_state => [:set_vars] do
   sh "#{@exekube_cmd} rake display_cluster_state"
 end
 
+desc "Display gpii/universal image SHA, CI job links, and link to GitHub commit that triggered the image build"
+task :display_universal_image_info => [:set_vars] do
+  sh "#{@exekube_cmd} rake display_universal_image_info"
+end
+
 task :check_destroy_allowed do
   if ["prd"].include?(@env)
     if ENV["RAKE_REALLY_DESTROY_IN_PRD"].nil?
@@ -125,6 +122,33 @@ end
 desc "Undeploy GPII components and destroy cluster"
 task :destroy => [:set_vars, :check_destroy_allowed, :fetch_helm_certs] do
   sh "#{@exekube_cmd} rake xk[down]"
+end
+
+desc "Destroy environment, state, and secrets"
+task :destroy_hard => [:set_vars] do
+  # Try to clean up any previous incarnation of this environment.
+  #
+  # Only destroy additional resources (e.g. secrets, terraform state) if
+  # previous steps succeeded; see https://issues.gpii.net/browse/GPII-3488.
+  begin
+    Rake::Task["destroy"].reenable
+    Rake::Task["destroy"].invoke
+    Rake::Task["destroy_secrets"].reenable
+    Rake::Task["destroy_secrets"].invoke
+    # If destroy and destroy_secrets both succeed, we want to destroy_tfstate as well.
+    begin
+      Rake::Task["destroy_tfstate"].reenable
+      Rake::Task["destroy_tfstate"].invoke("k8s")
+    rescue RuntimeError => err
+      puts "destroy_tfstate step failed:"
+      puts err
+      puts "Continuing."
+    end
+  rescue RuntimeError => err
+    puts "Destroy step failed:"
+    puts err
+    puts "Continuing."
+  end
 end
 
 desc "Destroy cluster and low-level infrastructure"
@@ -149,7 +173,7 @@ task :sh, [:cmd] => [:set_vars] do |taskname, args|
     puts "Argument :cmd -- the command to run inside the exekube container -- not present, defaulting to 'bash'"
     cmd = "bash"
   end
-  sh "#{@exekube_cmd} rake xk['#{cmd}',skip_secret_mgmt,preserve_stderr]"
+  sh "#{@exekube_cmd} rake xk['#{cmd}',true,true]"
 end
 
 desc "[ADVANCED] Run arbitrary command in exekube container via plain shell -- rake plain_sh['kubectl --namespace gpii get pods']"
@@ -214,6 +238,53 @@ task :rotate_secrets_key, [:kms_key] => [:set_vars, :check_destroy_allowed] do |
   sh "#{@exekube_cmd} rake rotate_secrets_key['#{kms_key}']"
 end
 
+desc "[EXPERIMENTAL] [ADVANCED] Import an existing KMS keyring, e.g when moving an environment to a new (but previously-used) region"
+task :import_keyring => [:set_vars, :check_destroy_allowed] do
+  sh "#{@exekube_cmd} rake import_keyring"
+end
+
+# We need Google to create the Container Registry for us (see
+# common/modules/gcp-container-registry/main.tf). This task pushes an image to
+# the Registry, which creates the Registry if it does not exist (or does
+# basically nothing if it already exists).
+task :init_registry => [:set_vars] do
+  # I've chosen the current exekube base image (alpine:3.9) because it is small
+  # and because it will end up in the Registry anyway. Note that this
+  # duplicates information in exekube/dockerfiles, i.e. there is coupling
+  # without cohesion.
+  image = "alpine:3.9"
+  registry_url_base = "gcr.io"
+  registry_url = "#{registry_url_base}/#{ENV["TF_VAR_project_id"]}"
+
+  # Pull the image to localhost
+  sh "docker pull #{image}"
+
+  # Tag the local image with our Registry
+  sh "docker tag #{image} #{registry_url}/#{image}"
+
+  # Authenticate with gcloud if we haven't already (the task that does this
+  # must run inside the exekube container, so we can't include it as a
+  # dependency to this task).
+  sh "#{@exekube_cmd} rake configure_login"
+
+  # Get an auth token using our gcloud credentials
+  token = %x{
+    #{@exekube_cmd} gcloud auth print-access-token
+  }.chomp
+
+  # Load the auth token into Docker
+  # (Use an env var to avoid echoing the token to stdout / the CI logs.)
+  ENV["RAKE_INIT_REGISTRY_TOKEN"] = token
+  sh "echo \"$RAKE_INIT_REGISTRY_TOKEN\" | docker login -u oauth2accesstoken --password-stdin https://#{registry_url_base}"
+
+  # Push the local image to our Registry
+  sh "docker push #{registry_url}/#{image}"
+
+  # Clean up
+  sh "docker rmi #{registry_url}/#{image}" # || true"
+  # We won't remove #{image} in case it existed previously. This is a small leak.
+end
+
 desc "[ADVANCED] Fetch helm TLS certificates from TF state (only in case they are present)"
 task :fetch_helm_certs => [:set_vars] do
   sh "#{@exekube_cmd} rake fetch_helm_certs"
@@ -234,7 +305,7 @@ task :deploy_module, [:module] => [:set_vars, :fetch_helm_certs] do |taskname, a
     puts "  ERROR: args[:module] must point to Terragrunt directory!"
     raise
   end
-  sh "#{@exekube_cmd} rake xk['apply live/#{@env}/#{args[:module]}',skip_secret_mgmt]"
+  sh "#{@exekube_cmd} rake xk['apply live/#{@env}/#{args[:module]}',true,false,true]"
 end
 
 desc "[ADVANCED] Destroy provided module in the cluster -- rake destroy_module['k8s/kube-system/cert-manager']"
@@ -246,17 +317,42 @@ task :destroy_module, [:module] => [:set_vars, :check_destroy_allowed, :fetch_he
     puts "  ERROR: args[:module] must point to Terragrunt directory!"
     raise
   end
-  sh "#{@exekube_cmd} rake xk['destroy live/#{@env}/#{args[:module]}',skip_secret_mgmt]"
+  sh "#{@exekube_cmd} rake xk['destroy live/#{@env}/#{args[:module]}',true]"
 end
 
-desc "[ADMIN ONLY] Grant owner role to the current user"
-task :grant_owner_role => [:set_vars] do
-  sh "#{@exekube_cmd} rake grant_owner_role"
+desc "[ADMIN ONLY] Grant owner role in the current project to the current user"
+task :grant_project_admin => [:set_vars] do
+  sh "#{@exekube_cmd} rake grant_project_admin"
 end
 
-desc "[ADMIN ONLY] Revoke owner role to the current user"
-task :revoke_owner_role => [:set_vars] do
-  sh "#{@exekube_cmd} rake revoke_owner_role"
+desc "[ADMIN ONLY] Revoke owner role in the current project from the current user"
+task :revoke_project_admin, [:force] => [:set_vars] do |taskname, args|
+  if !args[:force] and ENV['TF_VAR_project_id'].match("dev-#{ENV['USER']}")
+    puts "  ERROR: You can not revoke project admin role from yourself in your own dev project!"
+    puts "         Run `rake revoke_project_admin[true]` to do this anyway."
+    exit 1
+  end
+  sh "#{@exekube_cmd} rake revoke_project_admin"
+end
+
+desc "[ADMIN ONLY] Grant org-level admin roles to the current user"
+task :grant_org_admin => [:set_vars] do
+  sh "#{@exekube_cmd} rake grant_org_admin"
+end
+
+desc "[ADMIN ONLY] Revoke org-level admin roles from the current user"
+task :revoke_org_admin => [:set_vars] do
+  sh "#{@exekube_cmd} rake revoke_org_admin"
+end
+
+desc "[ADMIN ONLY] Restore a snapshot from a remote file"
+task :restore_snapshot_from_image_file, [:files] => [:set_vars] do |taskname, args|
+  sh "#{@exekube_cmd} rake restore_snapshot_from_image_file['#{args[:files]}']"
+end
+
+desc "CouchDB - access Fauxton Web UI"
+task :couchdb_ui => [:set_vars] do
+  sh "docker-compose run --rm -p 35984:35984 xk rake couchdb_ui"
 end
 
 # vim: et ts=2 sw=2:
