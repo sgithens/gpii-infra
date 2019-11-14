@@ -5,7 +5,6 @@
 # See the README for details on how to modify which images are used or to add
 # components.
 ---
-
 cert_manager:
   upstream:
     repository: quay.io/jetstack/cert-manager-controller
@@ -75,7 +74,7 @@ dataloader:
     repository: gpii/universal
     tag: 20190522142238-4a52f56
   generated:
-    repository: gcr.io/gpii-common-prd/gpii__universal
+    repository: gpii/universal
     sha: sha256:57606b63cc431e1608c00d124e86a60b8f6d24196d0e600b0d279dee31395076
     tag: 20190522142238-4a52f56
 flowmanager:
@@ -83,7 +82,7 @@ flowmanager:
     repository: gpii/universal
     tag: 20190522142238-4a52f56
   generated:
-    repository: gcr.io/gpii-common-prd/gpii__universal
+    repository: gpii/universal
     sha: sha256:57606b63cc431e1608c00d124e86a60b8f6d24196d0e600b0d279dee31395076
     tag: 20190522142238-4a52f56
 k8s_snapshots:
@@ -106,9 +105,17 @@ preferences:
   upstream:
     repository: sgithens/universal
     tag: latest
+  generated:
+    repository: sgithens/universal
+    sha: sha256:077ac2b0f18f34d864d9a94144fadd64ca831b813c0ddeddf13a54e430898481
+    tag: latest
 devpmt:
   upstream:
     repository: sgithens/gpii-devpmt
+    tag: latest
+  generated:
+    repository: sgithens/gpii-devpmt
+    sha: sha256:a83271e3470775c15a8f42ec2025b02dfeb63d9e64b7214f5d2cc726e549cc57
     tag: latest
 service_account_assigner:
   upstream:
