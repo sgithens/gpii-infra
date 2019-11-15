@@ -129,25 +129,32 @@ class Secrets
         decrypted_secrets.each do |secret_name, secret_value|
           ENV["TF_VAR_#{secret_name}"] = secret_value
         end
+
+        push_secrets = false
+        # If new secrets added into configuration, but encrypted secrets are already present
+        new_secrets = secrets - decrypted_secrets.keys
+        unless new_secrets.empty?
+          puts "[secret-mgmt] Populating new secrets for key '#{encryption_key}': #{new_secrets.join(", ")}..."
+          populated_secrets = populate_secrets(new_secrets)
+          decrypted_secrets = populated_secrets.merge(decrypted_secrets)
+          push_secrets = true
+        end
+
+        # If some secrets been removed from configuration, but still exist as encrypted secrets
+        removed_secrets = decrypted_secrets.keys - secrets
+        unless removed_secrets.empty?
+          puts "[secret-mgmt] Found removed secrets for key '#{encryption_key}': #{removed_secrets.join(", ")}..."
+          removed_secrets.each do |removed_secret|
+            decrypted_secrets.delete(removed_secret)
+          end
+          push_secrets = true
+        end
+
+        push_secrets(decrypted_secrets, encryption_key) if push_secrets
       else
         next if secrets.empty?
         puts "[secret-mgmt] Populating secrets for key '#{encryption_key}'..."
-        populated_secrets = {}
-        secrets.each do |secret_name|
-          if ENV["TF_VAR_#{secret_name}"].to_s.empty?
-            if secret_name.start_with?("key_")
-              key = OpenSSL::Cipher::AES256.new.encrypt.random_key
-              secret_value = Base64.strict_encode64(key)
-            else
-              secret_value = SecureRandom.hex
-            end
-            ENV["TF_VAR_#{secret_name}"] = secret_value
-          else
-            secret_value = ENV["TF_VAR_#{secret_name}"]
-          end
-          populated_secrets[secret_name] = secret_value
-        end
-
+        populated_secrets = populate_secrets(secrets)
         push_secrets(populated_secrets, encryption_key)
       end
     end
@@ -155,6 +162,27 @@ class Secrets
     # TODO: Next line should be removed once Terraform issue with GCS backend encryption is fixed
     # https://issues.gpii.net/browse/GPII-3329
     ENV['GOOGLE_ENCRYPTION_KEY'] = ENV['TF_VAR_key_tfstate_encryption_key']
+  end
+
+  def populate_secrets(secrets)
+    populated_secrets = {}
+
+    secrets.each do |secret_name|
+      if ENV["TF_VAR_#{secret_name}"].to_s.empty?
+        if secret_name.start_with?("key_")
+          key = OpenSSL::Cipher::AES256.new.encrypt.random_key
+          secret_value = Base64.strict_encode64(key)
+        else
+          secret_value = SecureRandom.hex
+        end
+        ENV["TF_VAR_#{secret_name}"] = secret_value
+      else
+        secret_value = ENV["TF_VAR_#{secret_name}"]
+      end
+      populated_secrets[secret_name] = secret_value
+    end
+
+    return populated_secrets
   end
 
   def push_secrets(secrets, encryption_key)
@@ -311,7 +339,7 @@ class Secrets
 
   # This method disables all versions except primary for target encryption_key
   def disable_non_primary_key_versions(encryption_key, primary_version_id)
-    puts "[secret-mgmt] Retrieving versions for key '#{encryption_key}'..."
+    puts "[secret-mgmt] Retrieving versions for key '#{encryption_key}' to disable..."
     key_versions = %x{
       gcloud kms keys versions list \
       --location #{@infra_region} \
@@ -345,6 +373,53 @@ class Secrets
         raise unless version_disabled['state'] == "DISABLED"
       rescue
         debug_output "ERROR: Unable to disable version #{version_id} for key '#{encryption_key}', terminating!", version_disabled
+        raise
+      end
+    end
+  end
+
+  # This method destroys disabled versions except N latest versions_to_keep for target encryption_key
+  def destroy_disabled_non_primary_key_versions(encryption_key, versions_to_keep = 10)
+    puts "[secret-mgmt] Retrieving disabled versions for key '#{encryption_key}' to destroy..."
+    key_versions = %x{
+      gcloud kms keys versions list \
+      --location #{@infra_region} \
+      --keyring #{Secrets::KMS_KEYRING_NAME} \
+      --key #{encryption_key} \
+      --filter=state=DISABLED \
+      --sort-by=~createTime \
+      --format json
+    }
+
+    begin
+      key_versions = JSON.parse(key_versions)
+    rescue
+      debug_output "ERROR: Unable to retrieve versions for key '#{encryption_key}', terminating!", key_versions
+      raise
+    end
+
+    key_versions.each do |version|
+      version_id = get_crypto_key_version(version["name"])
+      if versions_to_keep > 0
+        puts "[secret-mgmt] Skipping version #{version_id}, because need to keep #{versions_to_keep} most recent disabled versions!"
+        versions_to_keep = versions_to_keep - 1
+        next
+      end
+
+      puts "[secret-mgmt] Destroying version #{version_id} for key '#{encryption_key}'..."
+      version_destroyed = %x{
+        gcloud kms keys versions destroy #{version_id} \
+        --location #{@infra_region} \
+        --keyring #{Secrets::KMS_KEYRING_NAME} \
+        --key #{encryption_key} \
+        --format json
+      }
+
+      begin
+        version_destroyed = JSON.parse(version_destroyed)
+        raise unless version_destroyed['state'] == "DESTROY_SCHEDULED"
+      rescue
+        debug_output "ERROR: Unable to destroy version #{version_id} for key '#{encryption_key}', terminating!", version_destroyed
         raise
       end
     end

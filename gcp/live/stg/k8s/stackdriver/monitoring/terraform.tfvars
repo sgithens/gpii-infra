@@ -9,7 +9,6 @@ terragrunt = {
       "../../gpii/preferences",
       "../../gpii/flowmanager",
       "../../gpii/devpmt",
-      "../lbm",
     ]
   }
 

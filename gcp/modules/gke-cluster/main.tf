@@ -24,7 +24,7 @@ variable "node_count" {
 }
 
 variable "expected_gke_version_prefix" {
-  default = "1.12"
+  default = "1.13"
 }
 
 variable "infra_region" {}
@@ -99,6 +99,7 @@ module "gke_cluster" {
   issue_client_certificate = false
 
   update_timeout = "30m"
+  delete_timeout = "30m"
 
   primary_pool_min_node_count     = "${var.node_count}"
   primary_pool_max_node_count     = "${var.node_count}"

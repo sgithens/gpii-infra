@@ -1,5 +1,8 @@
-from locust import HttpLocust, TaskSet, task
+from locust import HttpLocust, TaskSet, task, events
 import random
+
+import on_failure
+events.request_failure += on_failure
 
 class FlowmanagerTasks(TaskSet):
 
