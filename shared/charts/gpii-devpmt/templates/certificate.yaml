@@ -1,0 +1,22 @@
+apiVersion: cert-manager.io/v1alpha2
+kind: Certificate
+metadata:
+  name: {{ template "devpmt.name" . }}-cert
+  labels:
+    app: {{ template "devpmt.name" . }}
+    chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+spec:
+  secretName: {{ template "devpmt.name" . }}-tls
+  issuerRef:
+    name: letsencrypt-{{ template "devpmt.name" . }}
+    kind: Issuer
+  dnsNames:
+  {{ toYaml .Values.dnsNames | indent 2 | trim }}
+  acme:
+    config:
+    - dns01:
+        provider: clouddns
+      domains:
+      {{ toYaml .Values.dnsNames | indent 6 | trim }}

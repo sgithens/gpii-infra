@@ -1,0 +1,19 @@
+apiVersion: cert-manager.io/v1alpha2
+kind: Issuer
+metadata:
+  name: letsencrypt-{{ template "devpmt.name" . }}
+  labels:
+    app: {{ template "devpmt.name" . }}
+    chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+spec:
+  acme:
+    server: {{ .Values.acme.server }}
+    email: {{ .Values.acme.email }}
+    privateKeySecretRef:
+      name: letsencrypt-{{ template "devpmt.name" . }}
+    solvers:
+    - dns01:
+        clouddns:
+          project: {{ required "A valid GCP Project id required for acme.clouddnsProject!" .Values.acme.clouddnsProject }}

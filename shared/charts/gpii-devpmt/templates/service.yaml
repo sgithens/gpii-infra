@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "devpmt.name" . }}
+  labels:
+    app: {{ template "devpmt.name" . }}
+    chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+spec:
+  selector:
+    app: {{ template "devpmt.name" . }}
+    release: {{ .Release.Name }}
+  ports:
+  - name: http
+    protocol: TCP
+    port: {{ .Values.svcListenPort }}
+    targetPort: {{ .Values.devpmtListenPort }}
+  type: ClusterIP

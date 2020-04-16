@@ -101,6 +101,14 @@ flowmanager:
     repository: gcr.io/gpii-common-prd/gpii__universal
     sha: sha256:1d10740602c8585ba5477631150b6b06a7ea4cfceb6423083955e5fb45b2af88
     tag: 20190809170605-f8485e9
+devpmt:
+  upstream:
+    repository: sgithens/gpii-devpmt
+    tag: user-accounts-ebea811
+  generated:
+    repository: sgithens/gpii-devpmt
+    sha: sha256:e91a46feda71688a109cf51952a5b988e44f3864c86e6e28d9f84f4000a0a440
+    tag: user-accounts-ebea811
 k8s_snapshots:
   upstream:
     repository: gpii/k8s-snapshots
@@ -119,12 +127,12 @@ locust:
     tag: 0.9.0-gpii.6
 preferences:
   upstream:
-    repository: gpii/universal
-    tag: 20190809170605-f8485e9
+    repository: sgithens/universal
+    tag: GPII-2966-2f365c41
   generated:
-    repository: gcr.io/gpii-common-prd/gpii__universal
-    sha: sha256:1d10740602c8585ba5477631150b6b06a7ea4cfceb6423083955e5fb45b2af88
-    tag: 20190809170605-f8485e9
+    repository: sgithens/universal
+    sha: sha256:e3e0e33b7a3bd9f019b3ac0ab0e1d72e06167aadbd3b90937a3ed796c38257e1
+    tag: GPII-2966-2f365c41
 service_account_assigner:
   upstream:
     repository: gpii/service-account-assigner

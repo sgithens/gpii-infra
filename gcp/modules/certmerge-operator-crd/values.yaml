@@ -4,3 +4,5 @@ secretLists:
   secretlist:
   - name: flowmanager-tls
     namespace: gpii
+  - name: devpmt-tls
+    namespace: gpii

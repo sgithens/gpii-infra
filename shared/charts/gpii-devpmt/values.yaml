@@ -1,0 +1,60 @@
+# Default values for gpii-devpmt.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+replicaCount: 1
+
+svcListenPort: 80
+devpmtListenPort: 8081
+datasourceListenPort: 5984
+datasourceHostname: "http://admin:password@couchdb-svc-couchdb.gpii.svc.cluster.local"
+
+couchdb:
+  labels:
+    app: couchdb
+  port: http-couchdb
+
+nodeEnv: gpii.config.devpmt.express.couchDbSessions
+
+preferences:
+  url: http://preferences.gpii.svc.cluster.local
+  labels:
+    app: preferences
+  port: http
+
+ingress:
+  labels:
+    app: istio-ingressgateway
+  namespaceLabels:
+    k8s-app: istio
+
+enableStackdriverTrace: false
+
+image:
+  repository: sgithens/gpii-devpmt
+  #checksum: sha256:652ed9dc86639d51e806356737567336339c9eb675193ba04b2c5346de3bdee6
+  pullPolicy: IfNotPresent
+
+rollingUpdate:
+  maxSurge: 25%
+  maxUnavailable: 25%
+
+acme:
+  server: https://acme-staging-v02.api.letsencrypt.org/directory
+  email: dev-null@raisingthefloor.org
+  clouddnsProject:
+
+dnsNames:
+- devpmt.test.local
+
+nameOverride: devpmt
+
+## Optional resource requests and limits for deployment
+## ref: http://kubernetes.io/docs/user-guide/compute-resources/
+resources: {}
+  # requests:
+  #  cpu: 100m
+  #  memory: 128Mi
+  # limits:
+  #  cpu: 56
+  #  memory: 256Gi

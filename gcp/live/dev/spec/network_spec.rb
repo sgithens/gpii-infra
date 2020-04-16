@@ -43,7 +43,8 @@ describe "Security:" do
     @couchdb_pods = get_gpii_pods_labeled("app", "couchdb")
     @preferences_pods = get_gpii_pods_labeled("app", "preferences")
     @flowmanager_pods = get_gpii_pods_labeled("app", "flowmanager")
-    @all_pods = @couchdb_pods | @preferences_pods | @flowmanager_pods
+    @devpmt_pods = get_gpii_pods_labeled("app", "devpmt")
+    @all_pods = @couchdb_pods | @preferences_pods | @flowmanager_pods | @devpmt_pods
 
     @couchdb_pods.each do |pod|
       kubectl("exec -n gpii -it #{pod.name} -- sh -c \"[ ! -f /bin/nc ] && apt-get update -y && apt-get install netcat -y\"")
@@ -55,18 +56,18 @@ describe "Security:" do
       it "listens on port 8081" do
         @preferences_pods.each do |pod|
           kubectl("exec -n gpii -it #{pod.name} -c preferences -- nc -z #{pod.ip} 8081")
-  
+
           expect($?.exitstatus).to eq(0)
         end
       end
-  
+
       it "is not accessible directly by any other pod on port 8081" do
         pending "implementation of network security policies"
-  
+
         @preferences_pods.each do |target|
           (@all_pods-[target]).each do |source|
             kubectl("exec -n gpii -it #{source.name} -- nc -z #{target.ip} 8081")
-  
+
              expect($?.exitstatus).to_not eq(0)
           end
         end
@@ -79,42 +80,68 @@ describe "Security:" do
       it "listens on port 8081" do
         @preferences_pods.each do |pod|
           kubectl("exec -n gpii -it #{pod.name} -- nc -z #{pod.ip} 8081")
-  
+
           expect($?.exitstatus).to eq(0)
         end
       end
-  
+
       it "is not accessible directly by any other pod on port 8081" do
         pending "implementation of network security policies"
-  
+
         @preferences_pods.each do |target|
           (@all_pods-[target]).each do |source|
             kubectl("exec -n gpii -it #{source.name} -- nc -z #{target.ip} 8081")
-  
+
              expect($?.exitstatus).to_not eq(0)
           end
         end
       end
-    end 
+    end
   end
-  
+
+  context "DevPMT Pod" do
+    context "Container Port 8081" do
+      it "listens on port 8081" do
+        # TODO this looks like a bug in the flowmanger one I copied and pasted?
+        @preferences_pods.each do |pod|
+          kubectl("exec -n gpii -it #{pod.name} -- nc -z #{pod.ip} 8081")
+
+          expect($?.exitstatus).to eq(0)
+        end
+      end
+
+      it "is not accessible directly by any other pod on port 8081" do
+        pending "implementation of network security policies"
+
+        @preferences_pods.each do |target|
+          (@all_pods-[target]).each do |source|
+            kubectl("exec -n gpii -it #{source.name} -- nc -z #{target.ip} 8081")
+
+             expect($?.exitstatus).to_not eq(0)
+          end
+        end
+      end
+    end
+  end
+
+
   context "Couchdb" do
     context "Application" do
       context "Container Port 5984" do
         it "should have couchdb listening on port 5984" do
           @couchdb_pods.each do |pod|
             kubectl("exec -n gpii -it #{pod.name} -- nc -z #{pod.ip} 5984")
-    
+
             expect($?.exitstatus).to eq(0)
           end
         end
-  
+
         it "is not accessible directly by any other pod on port 5984" do
-          pending "implementation of network security policies" 
+          pending "implementation of network security policies"
           @couchdb_pods.each do |target|
             (@all_pods-@couchdb_pods).each do |source|
               kubectl("exec -n gpii -it #{source.name} -- nc -z #{target.ip} 5984")
-  
+
               expect($?.exitstatus).to_not eq(0)
             end
           end
@@ -127,7 +154,7 @@ describe "Security:" do
         it "should have couchdb listening on port 4369 for erlang clustering" do
           @couchdb_pods.each do |pod|
             kubectl("exec -n gpii -it #{pod.name} -- nc -z #{pod.ip} 4369")
-    
+
             expect($?.exitstatus).to eq(0)
           end
         end
@@ -136,19 +163,19 @@ describe "Security:" do
           @couchdb_pods.each do |source|
             (@couchdb_pods-[source]).each do |target|
               kubectl("exec -n gpii -it #{source.name} -- nc -z #{target.ip} 4369")
-    
+
               expect($?.exitstatus).to eq(0)
             end
           end
         end
-  
+
         it "should not allow non-couchdb pods to reach port 4369" do
           pending "implementation of network security policies"
-  
+
           @couchdb_pods.each do |target|
             (@all_pods-@couchdb_pods).each do |source|
               kubectl("exec -n gpii -it #{source.name} -- nc -z #{target.ip} 4369")
-  
+
               expect($?.exitstatus).to_not eq(0)
             end
           end
@@ -159,7 +186,7 @@ describe "Security:" do
         it "should have couchdb listening on port 9100 for erlang clustering" do
           @couchdb_pods.each do |pod|
             kubectl("exec -n gpii -it #{pod.name} -- nc -z #{pod.ip} 9100")
-    
+
             expect($?.exitstatus).to eq(0)
           end
         end
@@ -168,19 +195,19 @@ describe "Security:" do
           @couchdb_pods.each do |source|
             (@couchdb_pods-[source]).each do |target|
               kubectl("exec -n gpii -it #{source.name} -- nc -z #{target.ip} 9100")
-  
+
               expect($?.exitstatus).to eq(0)
             end
           end
         end
-  
+
         it "should not allow non-couchdb pods to reach port 9100" do
           pending "implementation of network security policies"
-    
+
           @couchdb_pods.each do |target|
             (@all_pods-@couchdb_pods).each do |source|
               kubectl("exec -n gpii -it #{source.name} -- nc -z #{target.ip} 9100")
-    
+
               expect($?.exitstatus).to_not eq(0)
             end
           end

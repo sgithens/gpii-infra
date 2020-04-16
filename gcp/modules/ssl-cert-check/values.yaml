@@ -7,3 +7,5 @@ project_id: ${project_id}
 certificates:
   - host: flowmanager.${domain_name}
     port: 443
+  - host: devpmt.${domain_name}
+    port: 443

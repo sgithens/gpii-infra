@@ -1,0 +1,23 @@
+apiVersion: networking.istio.io/v1alpha3
+kind: Gateway
+metadata:
+  name: {{ template "devpmt.name" . }}-gateway
+  labels:
+    app: {{ template "devpmt.name" . }}
+    chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  - port:
+      number: 443
+      name: https-{{ template "devpmt.name" . }}
+      protocol: HTTPS
+    tls:
+      mode: SIMPLE
+      serverCertificate: /etc/istio/ingressgateway-certs/devpmt-tls.crt
+      privateKey: /etc/istio/ingressgateway-certs/devpmt-tls.key
+    hosts:
+    {{ toYaml .Values.dnsNames | indent 4 | trim }}

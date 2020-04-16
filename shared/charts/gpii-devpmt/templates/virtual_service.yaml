@@ -1,0 +1,18 @@
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: {{ template "devpmt.name" . }}-vs
+  labels:
+    app: {{ template "devpmt.name" . }}
+    chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+spec:
+  hosts:
+  {{ toYaml .Values.dnsNames | indent 2 | trim }}
+  gateways:
+  - {{ template "devpmt.name" . }}-gateway
+  http:
+  - route:
+    - destination:
+        host: {{ template "devpmt.name" . }}
