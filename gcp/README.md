@@ -185,12 +185,22 @@ See [CI-CD.md#running-in-non-dev-environments](../CI-CD.md#running-manually-in-n
 
 ### I want to deploy a new version of universal to production
 
-1. Find the [docker-gpii-universal-master MultiJob](https://ci.gpii.net/view/Docker/job/docker-gpii-universal-master/) that built the version you want to deploy.
+1. Find the [docker-gpii-universal-master MultiJob](https://ci.gpii.net/view/Docker/job/docker-gpii-universal-master/) that was built for the version you want to deploy (typically the container image will contain the short version of the associated commit hash).
 1. Find the `docker-gpii-universal-master-release` Job and look for `CALCULATED_TAG`, e.g. `CALCULATED_TAG=20190522142238-4a52f56`.
 1. Edit `gpii-infra/shared/versions.yml`.
    * Find your component and edit the `upstream.tag` field to the `CALCULATED_TAG` you found.
       * E.g., `201901021213-aaaaaaa -> 20190522142238-4a52f56`
-1. Create a [pull request against gpii-infra](https://github.com/gpii-ops/gpii-infra/pulls) containing your `versions.yml` change.
+1. Calculate the correct sha for the new container image using the gpii-version-updater package:
+   1. Clone https://github.com/gpii-ops/gpii-version-updater/ in the same directory as your gpii-infra clone.
+      * The `gpii-version-updater` clone and the `gpii-infra` clone should be siblings in the same directory (there are some references to `../gpii-infra`).
+   1. `cd gpii-version-updater`
+   1. Follow the steps at [gpii-version-updater: Installing on host](https://github.com/gpii-ops/gpii-version-updater/#installing-on-host) (or [gpii-version-updater: Running in a container](https://github.com/gpii-ops/gpii-version-updater/#running-in-a-container).
+   1. `rake sync`
+1. Deploy the updated container version to your dev cloud, i.e:
+   1. `cd gcp/live/dev`
+   2. `rake`
+1. Test the new container, including performance tests, automated acceptance tests, and manual QA using a Morphic client.  See [the testing documentation](./TESTING.md) for details.CI
+1. Create a [pull request against gpii-infra](https://github.com/gpii-ops/gpii-infra/pulls) containing the container tag changes you made to `versions.yml`.  Although it's not harmful to also include the updated `sha` values, it's best to omit those from the pull.
 1. Be prepared to coordinate deployment with the Ops team.
    * When is a good time for you and the Ops team to deploy this change?
    * Does the deployment require any special handling?
@@ -411,13 +421,43 @@ Addon manager `Reconcile` mode prevents us from making any modifications, so we 
 
 In case any of your new deployments fail with the error above, the reason is configuration drift in Istio sidecar injector. The solution is to restart sidecard injector pods, following [instructions](https://doc.istio.cn/en/help/ops/setup/injection/#x509-certificate-related-errors) from Istio documentation.
 
+### Istio components are failing to start - `x509: certificate signed by unknown authority`
+
+Check the logs from one of the failing pods if you observe following error:
+
+```
+2020-01-08T18:52:51.873253Z error mcp Failed to create a new MCP sink
+stream: rpc error: code = Unavailable desc = all SubConns are in
+TransientFailure, latest connection error: connection error: desc = "transport:
+authentication handshake failed: x509: certificate signed by unknown authority"
+```
+
+This issue is caused by certificates between Istio components being out of sync.
+This can happen when Root CA is rotated (historically root CA had a 1 year
+default lifetime, new root CAs have 10y... so don't expect to see this issue
+anytime soon).
+
+
+**To resolve this issue:**
+
+- Recreate (restart is not enough) all pods from `istio-galley` deployoment
+  (scaling to 0 and up is fine in this case).
+- Search for and recreate all pods that keep logging the above error after the
+  `istio-galley` pods have been recreated. Following Stackdriver filter can be
+  used:
+
+  ```
+  resource.type="k8s_container"
+  textPayload:"Failed to create a new MCP sink stream"
+  ```
+
 ## Common plumbing
 
 The environments that run in GCP need some initial resources that must be created by an administrator first. The [common part of this repository](../common) has the code and the instructions to do so.
 
 ## Continuous Integration / Continuous Delivery
 
-See [CI-CD.md](../CI-CD.md).
+See [Continuous Integration / Continuous Delivery](../CI-CD.md).
 
 ## Authentication workflow
 
@@ -445,8 +485,6 @@ More details about which roles and permissions are set in the infrastructure can
 ## Monitoring and alerting
 
 We use [Stackdriver Beta Monitoring](https://cloud.google.com/monitoring/kubernetes-engine/) to collect various system metrics, navigate through them with [Kubernetes Dashboard](https://app.google.stackdriver.com/kubernetes), and send alerts when they violate thresholds that are being set by [Stackdriver Alerting Policies](https://app.google.stackdriver.com/policies).
-
-Due to the lack of Terraform integration we use [Ruby client](https://github.com/gpii-ops/gpii-infra/blob/master/shared/rakefiles/stackdriver.rb) to apply / update / destroy Stackdriver's resource primitives from their [json configs](https://github.com/gpii-ops/gpii-infra/blob/master/gcp/modules/gcp-stackdriver-monitoring/resources).
 
 ### One-time Stackdriver Workspace setup
 

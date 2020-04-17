@@ -49,7 +49,7 @@ terraform-fmt-check:
   tags:
     - common
   script:
-    - docker run --rm -v "$(pwd):/data" -w /data gpii/exekube:0.9.10-google_gpii.0 -- terraform fmt --check=true
+    - docker run --rm -v "$(pwd):/data" -w /data gcr.io/gpii-common-prd/gpii__exekube:0.9.11-google_gpii.0 -- terraform fmt --check=true
   only:
     - master@gpii-ops/gpii-infra
 
@@ -58,7 +58,7 @@ gcp-unit-tests:
   tags:
     - gcp
   script:
-    - docker run --rm -v "$(pwd):/data" -w /data/shared/rakefiles/tests gpii/exekube:0.9.10-google_gpii.0 -- sh -c "bundle install --with test && rake"
+    - docker run --rm -v "$(pwd):/data" -w /data/shared/rakefiles/tests gcr.io/gpii-common-prd/gpii__exekube:0.9.11-google_gpii.0 -- sh -c "bundle install --with test && rake"
   only:
     - master@gpii-ops/gpii-infra
 
@@ -235,6 +235,8 @@ gcp-stg:
     - rake
     - rake test_preferences_read
     - rake test_flowmanager
+    - rake test_morphic_write
+    - rake test_morphic_read
   after_script:
     # Clean up even if something failed.
     - cd gcp/live/stg
@@ -304,6 +306,8 @@ gcp-prd:
     - rake
     - rake test_preferences_read RAKE_REALLY_DESTROY_IN_PRD=true
     - rake test_flowmanager RAKE_REALLY_DESTROY_IN_PRD=true
+    - rake test_morphic_write RAKE_REALLY_DESTROY_IN_PRD=true
+    - rake test_morphic_read RAKE_REALLY_DESTROY_IN_PRD=true
   after_script:
     # Clean up even if something failed.
     - cd gcp/live/prd

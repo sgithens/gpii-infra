@@ -6,3 +6,7 @@ secretLists:
     namespace: gpii
   - name: devpmt-tls
     namespace: gpii
+  notify:
+  - name: istio-ingressgateway
+    namespace: istio-system
+    type: deployment

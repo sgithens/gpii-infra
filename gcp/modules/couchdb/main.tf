@@ -2,6 +2,14 @@ terraform {
   backend "gcs" {}
 }
 
+provider "google" {
+  project     = "${var.project_id}"
+  credentials = "${var.serviceaccount_key}"
+}
+
+variable "env" {}
+variable "project_id" {}
+variable "serviceaccount_key" {}
 variable "secrets_dir" {}
 variable "charts_dir" {}
 variable "nonce" {}
@@ -32,6 +40,9 @@ variable "execute_recover_pvcs" {}
 variable "secret_couchdb_admin_password" {}
 variable "secret_couchdb_admin_username" {}
 variable "secret_couchdb_auth_cookie" {}
+variable "key_tfstate_encryption_key" {}
+variable "uuid_morphic_client_id" {}
+variable "uuid_morphic_client_secret" {}
 
 # Default variables
 
@@ -61,6 +72,16 @@ data "template_file" "couchdb_values" {
     pv_capacity               = "${var.pv_capacity}"
     pv_storage_class          = "${var.pv_storage_class}"
     pv_provisioner            = "${var.pv_provisioner}"
+  }
+}
+
+data "template_file" "morphic_credentials" {
+  template = "${file("morphic_credentials.json")}"
+
+  vars {
+    morphic_client_id     = "${var.uuid_morphic_client_id}"
+    morphic_client_secret = "${var.uuid_morphic_client_secret}"
+    timestamp             = "${timestamp()}"
   }
 }
 
@@ -146,6 +167,13 @@ resource "null_resource" "couchdb_finish_cluster" {
         fi
         if [ "$STATUS" != '"Cluster is already finished"' ]; then
           sleep 10
+        else
+          echo "Trying to create ${var.release_namespace} DB..."
+          curl -s -X PUT $COUCHDB_URL/${var.release_namespace} || true
+          echo "Trying to load default morphic credentials into ${var.release_namespace} DB..."
+          echo '${data.template_file.morphic_credentials.rendered}' | curl -s -d @- \
+            -H "Content-type: application/json" \
+            -X POST $COUCHDB_URL/${var.release_namespace}/_bulk_docs || true
         fi
         RETRY_COUNT=$(($RETRY_COUNT+1))
       done
@@ -188,6 +216,44 @@ resource "null_resource" "couchdb_destroy_pvcs" {
     command = <<EOF
       for PVC in $(kubectl get pvc -n ${var.release_namespace} -o json | jq -r '.items[] | select(.metadata.name | startswith("database-storage-couchdb")) | .metadata.name'); do
         timeout -t 600 kubectl -n ${var.release_namespace} delete --ignore-not-found --grace-period=300 pvc $PVC
+      done
+    EOF
+  }
+}
+
+data "terraform_remote_state" "alert_notification_channel" {
+  backend = "gcs"
+
+  config {
+    credentials    = "${var.serviceaccount_key}"
+    bucket         = "${var.project_id}-tfstate"
+    prefix         = "${var.env}/k8s/stackdriver/monitoring"
+    encryption_key = "${var.key_tfstate_encryption_key}"
+  }
+}
+
+resource "null_resource" "wait_for_lbms" {
+  depends_on = ["google_logging_metric.couchdb_missing_node"]
+
+  triggers = {
+    nonce = "${var.nonce}"
+  }
+
+  provisioner "local-exec" {
+    command = <<EOF
+      MAX_RETRIES=60
+      SLEEP_SEC=5
+      for RESOURCE in ${google_logging_metric.couchdb_missing_node.name}; do
+        ALERT_READY=false
+        COUNT=1
+        while [ "$ALERT_READY" != 'true' ] && [ "$COUNT" -le "$MAX_RETRIES" ]; do
+          echo "Waiting for log based metric $RESOURCE to be ready ($COUNT/$MAX_RETRIES)"
+          gcloud logging metrics describe $RESOURCE > /dev/null
+          [ "$?" -eq 0 ] && ALERT_READY=true
+          # Sleep only if we're not ready
+          [ "$ALERT_READY" != 'true' ] && sleep "$SLEEP_SEC"
+          COUNT=$((COUNT+1))
+        done
       done
     EOF
   }
